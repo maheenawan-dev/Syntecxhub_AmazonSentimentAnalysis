@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amazon Customer Sentiment Analysis</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#14202b; --ink-soft:#4a5a68; --paper:#f6f4ef; --panel:#ffffff;
+    --line:#e1ddd2; --accent:#1f6f5c; --warn:#a8462f; --gold:#b9893a; --accent-soft:#dcece6;
+  }
+  *{box-sizing:border-box;}
+  html{overflow-x:hidden;}
+  body{margin:0; font-family:'Helvetica Neue',Arial,sans-serif; background:var(--paper); color:var(--ink); overflow-x:hidden; width:100%;}
+  header{padding:36px 28px 22px; border-bottom:2px solid var(--ink);}
+  @media(max-width:600px){header{padding:24px 16px 16px;}}
+  .eyebrow{font-size:12px; letter-spacing:.1em; color:var(--ink-soft); margin-bottom:8px;}
+  h1{font-family:Georgia,serif; font-size:clamp(24px,4vw,38px); margin:0 0 6px; font-weight:400;}
+  .sub{color:var(--ink-soft); font-size:14px; max-width:700px; line-height:1.5;}
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); margin:24px 28px 0;}
+  .kpi{background:var(--panel); padding:20px 18px; min-width:0;}
+  .kpi .label{font-size:11px; letter-spacing:.06em; color:var(--ink-soft); text-transform:uppercase; margin-bottom:8px;}
+  .kpi .value{font-family:Georgia,serif; font-size:24px; word-break:break-word;}
+  .kpi.good .value{color:var(--accent);}
+  .kpi.warn .value{color:var(--warn);}
+  main{padding:24px 28px 60px; max-width:1180px; margin:0 auto; width:100%;}
+  .row{display:grid; gap:24px; margin-bottom:24px; min-width:0;}
+  .row.two{grid-template-columns:1fr 1fr;}
+  .row.three{grid-template-columns:1fr 1fr;}
+  @media(max-width:900px){.row.two,.row.three{grid-template-columns:1fr;}}
+  .panel{background:var(--panel); border:1px solid var(--line); padding:20px; min-width:0; overflow:hidden;}
+  .panel h2{font-size:15px; font-weight:600; margin:0 0 4px;}
+  .panel .note{font-size:12px; color:var(--ink-soft); margin-bottom:14px;}
+  .chart-wrap{position:relative; height:260px; width:100%;}
+  .word-list{display:flex; flex-wrap:wrap; gap:8px;}
+  .word-chip{font-size:12px; padding:5px 10px; border-radius:3px; background:var(--accent-soft); color:var(--ink);}
+  .word-chip.neg{background:#f3dcd6;}
+  @media(max-width:600px){
+    .kpis{margin:20px 16px 0;}
+    main{padding:20px 16px 40px;}
+    .kpi .value{font-size:19px;}
+    .chart-wrap{height:220px;}
+  }
+  footer{font-size:12px; color:var(--ink-soft); text-align:center; padding:20px; border-top:1px solid var(--line);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">SYNTECXHUB · DATA ANALYSIS INTERNSHIP · TASK 4</div>
+  <h1>Amazon Customer Sentiment Analysis</h1>
+  <div class="sub" id="subtext">Sentiment classification of 10,000 real Amazon Fine Food Reviews using NLP — comparing automated sentiment against actual star ratings to validate accuracy.</div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Total Reviews</div><div class="value" id="kpi-total">—</div></div>
+  <div class="kpi good"><div class="label">Positive</div><div class="value" id="kpi-pos">—</div></div>
+  <div class="kpi warn"><div class="label">Negative</div><div class="value" id="kpi-neg">—</div></div>
+  <div class="kpi"><div class="label">Model Agreement</div><div class="value" id="kpi-agree">—</div></div>
+</div>
+
+<main>
+  <div class="row two">
+    <div class="panel">
+      <h2>Sentiment Distribution</h2>
+      <div class="note">Share of reviews classified Positive, Negative, or Neutral.</div>
+      <div class="chart-wrap"><canvas id="sentimentChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Sentiment by Star Rating</h2>
+      <div class="note">How predicted sentiment lines up with the actual 1–5 star rating.</div>
+      <div class="chart-wrap"><canvas id="ratingChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="panel">
+      <h2>Sentiment Trend Over Time</h2>
+      <div class="note">Monthly review volume by sentiment (most recent period shown).</div>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="row two">
+    <div class="panel">
+      <h2>Most Common Words — Positive Reviews</h2>
+      <div class="word-list" id="posWords"></div>
+    </div>
+    <div class="panel">
+      <h2>Most Common Words — Negative Reviews</h2>
+      <div class="word-list" id="negWords"></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="panel">
+      <h2>Insights &amp; Recommendations</h2>
+      <ul id="insights" style="font-size:13px; line-height:1.9; margin:0; padding-left:18px;"></ul>
+    </div>
+  </div>
+</main>
+
+<footer>Amazon Customer Sentiment Analysis — Syntecxhub Task 4 (Data Analysis) · VADER sentiment analysis with Python, visualized with Chart.js</footer>
+
+<script>
+const DATA = {"total_reviews": 10000, "sentiment_counts": {"Positive": 8892, "Negative": 905, "Neutral": 203}, "sentiment_pct": {"Positive": 88.92, "Negative": 9.05, "Neutral": 2.03}, "avg_rating": 4.13, "model_agreement_pct": 79.16, "rating_sentiment_breakdown": {"Negative": {"1": 44.2, "2": 25.3, "3": 16.8, "4": 4.0, "5": 2.3}, "Neutral": {"1": 5.0, "2": 4.4, "3": 3.9, "4": 1.7, "5": 1.2}, "Positive": {"1": 50.8, "2": 70.3, "3": 79.2, "4": 94.3, "5": 96.6}}, "top_positive_words": [["like", 4010], ["coffee", 3375], ["good", 3324], ["can", 2859], ["great", 2812], ["taste", 2743], ["one", 2611], ["flavor", 2483], ["all", 2480], ["more", 2047], ["love", 1993], ["when", 1944]], "top_negative_words": [["coffee", 289], ["like", 273], ["all", 255], ["one", 251], ["taste", 245], ["can", 242], ["would", 239], ["when", 196], ["flavor", 192], ["will", 185], ["food", 176], ["more", 175]], "monthly_trend": {"Negative": {"2010-11": 12.0, "2010-12": 21.0, "2011-01": 23.0, "2011-02": 20.0, "2011-03": 22.0, "2011-04": 15.0, "2011-05": 20.0, "2011-06": 13.0, "2011-07": 21.0, "2011-08": 17.0, "2011-09": 21.0, "2011-10": 34.0, "2011-11": 22.0, "2011-12": 38.0, "2012-01": 47.0, "2012-02": 43.0, "2012-03": 33.0, "2012-04": 29.0, "2012-05": 22.0, "2012-06": 29.0, "2012-07": 25.0, "2012-08": 31.0, "2012-09": 38.0, "2012-10": 34.0}, "Neutral": {"2010-11": 4.0, "2010-12": 3.0, "2011-01": 8.0, "2011-02": 5.0, "2011-03": 5.0, "2011-04": 6.0, "2011-05": 1.0, "2011-06": 1.0, "2011-07": 4.0, "2011-08": 5.0, "2011-09": 2.0, "2011-10": 5.0, "2011-11": 7.0, "2011-12": 8.0, "2012-01": 7.0, "2012-02": 7.0, "2012-03": 7.0, "2012-04": 7.0, "2012-05": 7.0, "2012-06": 0.0, "2012-07": 5.0, "2012-08": 6.0, "2012-09": 8.0, "2012-10": 6.0}, "Positive": {"2010-11": 135.0, "2010-12": 170.0, "2011-01": 210.0, "2011-02": 196.0, "2011-03": 200.0, "2011-04": 165.0, "2011-05": 177.0, "2011-06": 189.0, "2011-07": 217.0, "2011-08": 212.0, "2011-09": 209.0, "2011-10": 214.0, "2011-11": 246.0, "2011-12": 332.0, "2012-01": 411.0, "2012-02": 296.0, "2012-03": 298.0, "2012-04": 258.0, "2012-05": 278.0, "2012-06": 247.0, "2012-07": 235.0, "2012-08": 242.0, "2012-09": 299.0, "2012-10": 291.0}}};
+Chart.defaults.font.family = "'Helvetica Neue', Arial, sans-serif";
+const palette = {Positive:'#1f6f5c', Negative:'#a8462f', Neutral:'#b9893a'};
+
+document.getElementById('kpi-total').textContent = DATA.total_reviews.toLocaleString();
+document.getElementById('kpi-pos').textContent = DATA.sentiment_pct.Positive + '%';
+document.getElementById('kpi-neg').textContent = DATA.sentiment_pct.Negative + '%';
+document.getElementById('kpi-agree').textContent = DATA.model_agreement_pct + '%';
+
+new Chart(document.getElementById('sentimentChart'), {
+  type:'doughnut',
+  data:{
+    labels:Object.keys(DATA.sentiment_counts),
+    datasets:[{data:Object.values(DATA.sentiment_counts), backgroundColor:Object.keys(DATA.sentiment_counts).map(k=>palette[k])}]
+  },
+  options:{maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12,padding:12}}}}
+});
+
+const ratingLabels = Object.keys(DATA.rating_sentiment_breakdown.Positive || {}).sort();
+const sentTypes = Object.keys(DATA.rating_sentiment_breakdown);
+new Chart(document.getElementById('ratingChart'), {
+  type:'bar',
+  data:{
+    labels: ratingLabels.map(r=>r+' star'),
+    datasets: sentTypes.map(s=>({
+      label:s,
+      data: ratingLabels.map(r=>DATA.rating_sentiment_breakdown[s][r]||0),
+      backgroundColor: palette[s]
+    }))
+  },
+  options:{
+    plugins:{legend:{position:'bottom', labels:{boxWidth:12,padding:10}}},
+    scales:{x:{stacked:true}, y:{stacked:true, ticks:{callback:v=>v+'%'}}},
+    maintainAspectRatio:false
+  }
+});
+
+const months = Object.keys(DATA.monthly_trend.Positive || {}).sort();
+new Chart(document.getElementById('trendChart'), {
+  type:'line',
+  data:{
+    labels: months,
+    datasets: Object.keys(DATA.monthly_trend).map(s=>({
+      label:s,
+      data: months.map(m=>DATA.monthly_trend[s][m]||0),
+      borderColor: palette[s],
+      backgroundColor: palette[s],
+      fill:false,
+      tension:0.2
+    }))
+  },
+  options:{plugins:{legend:{position:'bottom', labels:{boxWidth:12,padding:10}}}, maintainAspectRatio:false}
+});
+
+function renderWords(el, words, cls){
+  el.innerHTML = words.map(([w,c]) => `<span class="word-chip ${cls}">${w} (${c})</span>`).join('');
+}
+renderWords(document.getElementById('posWords'), DATA.top_positive_words, '');
+renderWords(document.getElementById('negWords'), DATA.top_negative_words, 'neg');
+
+const insights = [
+  `<strong>${DATA.sentiment_pct.Positive}%</strong> of reviews are Positive, <strong>${DATA.sentiment_pct.Negative}%</strong> Negative — overall customer sentiment is strongly favorable (avg rating: ${DATA.avg_rating}/5).`,
+  `The sentiment model agrees with actual star ratings <strong>${DATA.model_agreement_pct}%</strong> of the time, validating it as a reliable automated alternative to manual review reading.`,
+  `Words like "taste", "flavor", and "great" dominate positive reviews — product taste is the primary driver of satisfaction.`,
+  `Negative reviews still mention "taste" and "coffee" frequently — suggesting taste/quality consistency issues are the main complaint driver, not just shipping or packaging.`,
+  `Recommendation: monitor new reviews mentioning negative-associated terms for early quality control signals, and highlight positively-associated attributes in marketing.`
+];
+document.getElementById('insights').innerHTML = insights.map(i=>`<li>${i}</li>`).join('');
+</script>
+
+</body>
+</html>
